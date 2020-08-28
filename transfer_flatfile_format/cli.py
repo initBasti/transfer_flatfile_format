@@ -1,19 +1,26 @@
+"""
+    Author: Sebastian Fricke, Panasiam
+    Date: 2020-08-28
+    License: GPLv3
+
+    Move data inbetween different flatfile formats to the correct postion.
+"""
 import sys
 import os
-import pandas
-import numpy as np
 import argparse
 import configparser
+import pandas
+import numpy as np
 
 from transfer_flatfile_format.packages import google_sheet
 
 USER = os.getlogin()
 if sys.platform == 'linux':
     DATA_DIR = os.path.join('/', 'home', str(f'{USER}'),
-                               '.transfer_flatfile_format_data/')
+                            '.transfer_flatfile_format_data/')
 elif sys.platform == 'win32':
     DATA_DIR = os.path.join('C:\\', 'Users', str(f'{USER}'),
-                               '.transfer_flatfile_format_data/')
+                            '.transfer_flatfile_format_data/')
 CONFIG_PATH = os.path.join(DATA_DIR, 'config.ini')
 
 def check_path(path):
@@ -51,8 +58,8 @@ def create_match_table(sheet, intern_list):
     """
     reduced_intern =\
         intern_list[['Variation.number', 'Variation.externalId']].rename(
-            columns = {'Variation.number':'item_sku',
-                       'Variation.externalId':'alt_sku'})
+            columns={'Variation.number':'item_sku',
+                     'Variation.externalId':'alt_sku'})
     reduced_intern = reduced_intern.astype({'item_sku':object})
     merge = sheet.merge(reduced_intern, how='left')
     merge['alt_sku'].replace(np.nan, '', inplace=True)
@@ -74,6 +81,7 @@ def find_match(sku, header, source, table):
 
         Return:
             [String/Int]        - Value from the combination of SKU/HEADER
+                                  OR ''
     """
     if header not in source.columns:
         return ''
@@ -84,14 +92,14 @@ def find_match(sku, header, source, table):
     if len(source_match.index) > 0:
         try:
             value = source_match[header]
-        except KeyError as err:
+        except KeyError:
             return ''
     elif len(table_match.index) == 0:
         return ''
     elif len(source[source['item_sku'] == table_match['alt_sku'].values[0]].index) > 0:
         try:
             value = source[source['item_sku'] == table_match['alt_sku'].values[0]][header]
-        except KeyError as err:
+        except KeyError:
             return ''
     else:
         return ''
@@ -132,14 +140,16 @@ def transfer_from_original(gsheet, source, match_table):
 
 def cli():
     orig_path = ''
-    intern_path = ''
     sheet_id = ''
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-o', '--original', required=True,
                         help='The original flatfile format',
                         action='store', dest='original')
-    ns = parser.parse_args()
+    parser.add_argument('-c', '--column', required=False,
+                        help='choose a specific column from the data source',
+                        action='store', dest='column')
+    args = parser.parse_args()
 
     if not os.path.exists(DATA_DIR):
         os.mkdir(DATA_DIR)
@@ -151,14 +161,15 @@ def cli():
 
     creds = google_sheet.get_google_credentials()
 
-    orig_path = check_path(path=ns.original)
+    orig_path = check_path(path=args.original)
 
     if not orig_path:
         print("path to required file not valid\n[{0}]".format(orig_path))
         sys.exit(1)
 
     # Parse the EAN field explicitly to a string to read EANs starting with
-    # '0..' correctly
+    # '0..' correctly, do the same for the browse nodes to avoid floating
+    # points
     orig = pandas.read_csv(orig_path, sep=';',
                            dtype={'external_product_id':object,
                                   'recommended_browse_nodes':object})
@@ -167,12 +178,26 @@ def cli():
     inter = pandas.read_csv(config['General']['sku_export'], sep=';')
     print("finished.")
 
-    gsheet = google_sheet.read_google_sheet(creds=creds, sheet_id=sheet_id)
+    if args.column:
+        gsheet = google_sheet.read_specified_column(creds=creds,
+                                                    sheet_id=sheet_id,
+                                                    target_column=args.column)
+    elif not args.column:
+        gsheet = google_sheet.read_incomplete_data(creds=creds,
+                                                   sheet_id=sheet_id)
+
+    if len(gsheet.index) == 0:
+        sys.exit(1)
 
     match_table = create_match_table(sheet=gsheet, intern_list=inter)
 
-    gsheet = transfer_from_original(gsheet=gsheet, source=orig,
-                                    match_table=match_table)
+    if args.column:
+        gsheet['value'] = gsheet['item_sku'].apply(
+            lambda x: find_match(sku=x, header=args.column, source=orig,
+                                 table=match_table))
+    elif not args.column:
+        gsheet = transfer_from_original(gsheet=gsheet, source=orig,
+                                        match_table=match_table)
 
     gsheet.to_csv(os.path.join('/', 'home', 'basti', 'test_transfer.csv'), sep=';',
                   index=False)
