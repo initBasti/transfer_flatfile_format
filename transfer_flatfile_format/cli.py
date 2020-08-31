@@ -45,6 +45,34 @@ def check_path(path):
     return full_path
 
 
+def get_matchtable_data(config):
+    data = {'activate': False, 'main_sku': '', 'alt_sku': '', 'src': ''}
+
+    if not config:
+        return data
+
+    if 'Match_table' not in config.sections():
+        return data
+
+    if (not config.has_option(section='Match_table', option='main_sku') or\
+            not config.has_option(section='Match_table', option='alt_sku') or\
+            not config.has_option(section='Match_table', option='sku_export') or\
+            not config.has_option(section='Match_table', option='with_matchtable')):
+        print("WARNING: Match table configuration data not complete")
+        return data
+
+    if config['Match_table']['with_matchtable'].lower()[0] == 'y':
+        data['activate'] = True
+    else:
+        return data
+
+    data['main_sku'] = config['Match_table']['main_sku']
+    data['alt_sku'] = config['Match_table']['alt_sku']
+    data['src'] = config['Match_table']['sku_export']
+
+    return data
+
+
 def get_exclude_options(string):
     """
         Parse the command line option to check if the columns are valid
@@ -86,7 +114,7 @@ def exclude_columns(data, columns):
     return sub_arguments
 
 
-def create_match_table(sheet, intern_list):
+def create_match_table(sheet, intern_list, config):
     """
         Create a data-frame of the SKUs found in the google sheet,
         together with an alternative to improve the chances of finding
@@ -95,14 +123,18 @@ def create_match_table(sheet, intern_list):
         Parameter:
             sheet [DataFrame]       -   The google sheet data
             intern_list [DataFrame] -   A separate list with alternative SKUs
+            config [Dict]           -   match table information from the config
 
         Return:
             [DataFrame] - SKU/Alternative SKU
     """
+    main_sku = config['main_sku']
+    alt_sku = config['alt_sku']
+
     reduced_intern =\
-        intern_list[['Variation.number', 'Variation.externalId']].rename(
-            columns={'Variation.number':'item_sku',
-                     'Variation.externalId':'alt_sku'})
+        intern_list[[main_sku, alt_sku]].rename(
+            columns={main_sku:'item_sku',
+                     alt_sku:'alt_sku'})
     reduced_intern = reduced_intern.astype({'item_sku': object})
     merge = sheet.merge(reduced_intern, how='left')
     merge['alt_sku'].replace(np.nan, '', inplace=True)
@@ -131,22 +163,19 @@ def find_match(sku, header, source, table):
         return ''
 
     source_match = source[source['item_sku'] == sku]
-    table_match = table[table['item_sku'] == sku]
+    try:
+        table_match = table[table['item_sku'] == sku]
+    except KeyError:
+        table_match = pandas.DataFrame()
 
     if len(source_match.index) > 0:
-        try:
-            value = source_match[header]
-        except KeyError:
-            return ''
+        value = source_match[header]
     elif len(table_match.index) == 0:
         return ''
     elif len(source[source['item_sku'] ==
                     table_match['alt_sku'].values[0]].index) > 0:
-        try:
-            value = source[source['item_sku'] ==
-                           table_match['alt_sku'].values[0]][header]
-        except KeyError:
-            return ''
+        value = source[source['item_sku'] ==
+                       table_match['alt_sku'].values[0]][header]
     else:
         return ''
     if len(value.index) == 0:
@@ -189,23 +218,22 @@ def transfer_from_original(gsheet, source, match_table, exclude):
     return gsheet
 
 
-def cli():
-    orig_path = ''
-    sheet_id = ''
-
+def set_up_argparser():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-o',
-                        '--original',
-                        required=True,
-                        action='store',
-                        dest='original',
-                        help='The original flatfile format')
-    parser.add_argument('-c',
-                        '--column',
-                        required=False,
-                        action='store',
-                        dest='column',
-                        help='choose a specific column from the data source')
+    parser.add_argument(
+        '-o',
+        '--original',
+        required=True,
+        action='store',
+        dest='original',
+        help='original flatfile format')
+    parser.add_argument(
+        '-c',
+        '--column',
+        required=False,
+        action='store',
+        dest='column',
+        help='choose a specific column from the data source')
     parser.add_argument(
         '-e',
         '--exclude',
@@ -213,7 +241,23 @@ def cli():
         action='store',
         dest='exclude',
         help='exclude a column/list of column names from being overwritten')
-    args = parser.parse_args()
+    parser.add_argument(
+        '-s',
+        '--save',
+        required=False,
+        action='store_true',
+        dest='save',
+        help='save the changes into a file at ~/.transfer_flatfile_format')
+    return parser.parse_args()
+
+
+def cli():
+    orig_path = ''
+    sheet_id = ''
+    match_table = pandas.DataFrame()
+    with_matchtable = False
+
+    args = set_up_argparser()
 
     if not os.path.exists(DATA_DIR):
         os.mkdir(DATA_DIR)
@@ -222,6 +266,10 @@ def cli():
     config.read(CONFIG_PATH)
 
     sheet_id = config['General']['google_sheet_id']
+    matchtable_data = get_matchtable_data(config=config)
+
+    if matchtable_data['activate']:
+        with_matchtable = True
 
     creds = google_sheet.get_google_credentials()
 
@@ -231,19 +279,8 @@ def cli():
         print("path to required file not valid\n[{0}]".format(orig_path))
         sys.exit(1)
 
-    # Parse the EAN field explicitly to a string to read EANs starting with
-    # '0..' correctly, do the same for the browse nodes to avoid floating
-    # points
-    orig = pandas.read_csv(orig_path,
-                           sep=';',
-                           dtype={
-                               'external_product_id': object,
-                               'recommended_browse_nodes': object
-                           })
-
-    print("Downloading alternative SKUs..")
-    inter = pandas.read_csv(config['General']['sku_export'], sep=';')
-    print("finished.")
+    # We just want to copy values so just take everything as a string
+    orig = pandas.read_csv(orig_path, sep=';', dtype=str)
 
     if args.column:
         gsheet = google_sheet.read_specified_column(creds=creds,
@@ -258,7 +295,13 @@ def cli():
 
     ex = exclude_columns(data=gsheet, columns=args.exclude)
 
-    match_table = create_match_table(sheet=gsheet, intern_list=inter)
+    if with_matchtable:
+        print("Downloading alternative SKUs..")
+        inter = pandas.read_csv(matchtable_data['src'], sep=';')
+        print("finished.")
+        match_table = create_match_table(sheet=gsheet,
+                                         intern_list=inter,
+                                         config=matchtable_data)
 
     if args.column:
         gsheet['value'] = gsheet['item_sku'].apply(lambda x: find_match(
@@ -269,9 +312,10 @@ def cli():
                                         match_table=match_table,
                                         exclude=ex)
 
-    gsheet.to_csv(os.path.join('/', 'home', 'basti', 'test_transfer.csv'),
-                  sep=';',
-                  index=False)
+    if args.save:
+        gsheet.to_csv(os.path.join(DATA_DIR, 'last_changes.csv'),
+                      sep=';',
+                      index=False)
 
     google_sheet.write_google_sheet(creds=creds,
                                     sheet_id=sheet_id,
