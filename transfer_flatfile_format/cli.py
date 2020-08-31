@@ -23,16 +23,17 @@ elif sys.platform == 'win32':
                             '.transfer_flatfile_format_data/')
 CONFIG_PATH = os.path.join(DATA_DIR, 'config.ini')
 
+
 def check_path(path):
     """
         Check if the path supplied through the command line interface is
         a subpart of the actual path / a full path or invalid.
 
         Parameter:
-            path [String]   - Path string from argument parser
+            path [String]   -   Path string from argument parser
 
         Return:
-            [String]    - Return the full valid path
+            [String]        -   Return the full valid path
     """
     full_path = os.path.join(os.getcwd(), path)
     if not os.path.exists(full_path):
@@ -43,6 +44,48 @@ def check_path(path):
             return ''
     return full_path
 
+
+def get_exclude_options(string):
+    """
+        Parse the command line option to check if the columns are valid
+        and separated in the correct format.
+
+        Parameter:
+            string [String]     -   single column or multiple separated columns
+
+        Return:
+            [List]
+    """
+    if string.find(','):
+        return string.split(',')
+    return [string]
+
+
+def exclude_columns(data, columns):
+    """
+        Check if the columns from the command line option 'exclude'
+        match the columns read from the google sheet.
+
+        Parameter:
+            data [DataFrame]    -   Data from the google sheet
+            columns [String]    -   Columns for exclusion from CLI
+
+        Return:
+            [List]              -   List of valid columns to exclude
+    """
+    if not columns:
+        return
+
+    sub_arguments = get_exclude_options(string=columns)
+
+    for arg in sub_arguments:
+        if arg not in data.columns:
+            print(f"WARNING: No column named [{arg}] in the google sheet")
+            sub_arguments.remove(arg)
+
+    return sub_arguments
+
+
 def create_match_table(sheet, intern_list):
     """
         Create a data-frame of the SKUs found in the google sheet,
@@ -50,8 +93,8 @@ def create_match_table(sheet, intern_list):
         a match.
 
         Parameter:
-            sheet [DataFrame]       - The google sheet data
-            intern_list [DataFrame] - A separate list with alternative SKUs
+            sheet [DataFrame]       -   The google sheet data
+            intern_list [DataFrame] -   A separate list with alternative SKUs
 
         Return:
             [DataFrame] - SKU/Alternative SKU
@@ -60,11 +103,12 @@ def create_match_table(sheet, intern_list):
         intern_list[['Variation.number', 'Variation.externalId']].rename(
             columns={'Variation.number':'item_sku',
                      'Variation.externalId':'alt_sku'})
-    reduced_intern = reduced_intern.astype({'item_sku':object})
+    reduced_intern = reduced_intern.astype({'item_sku': object})
     merge = sheet.merge(reduced_intern, how='left')
     merge['alt_sku'].replace(np.nan, '', inplace=True)
 
     return merge[['item_sku', 'alt_sku']]
+
 
 def find_match(sku, header, source, table):
     """
@@ -73,15 +117,15 @@ def find_match(sku, header, source, table):
         from the column HEADER if that one is present in the source.
 
         Parameter:
-            sku [String]        - given SKU from the google sheet
-            header [String]     - Name of the column from the google sheet
-            source [DataFrame]  - original Flatfile format from CLI
-            table  [DataFrame]  - Table with google sheet SKUs and matching
-                                  alternative SKUs
+            sku [String]        -   given SKU from the google sheet
+            header [String]     -   Name of the column from the google sheet
+            source [DataFrame]  -   original Flatfile format from CLI
+            table  [DataFrame]  -   Table with google sheet SKUs and matching
+                                    alternative SKUs
 
         Return:
-            [String/Int]        - Value from the combination of SKU/HEADER
-                                  OR ''
+            [String/Int]        -   Value from the combination of SKU/HEADER
+                                    OR ''
     """
     if header not in source.columns:
         return ''
@@ -96,9 +140,11 @@ def find_match(sku, header, source, table):
             return ''
     elif len(table_match.index) == 0:
         return ''
-    elif len(source[source['item_sku'] == table_match['alt_sku'].values[0]].index) > 0:
+    elif len(source[source['item_sku'] ==
+                    table_match['alt_sku'].values[0]].index) > 0:
         try:
-            value = source[source['item_sku'] == table_match['alt_sku'].values[0]][header]
+            value = source[source['item_sku'] ==
+                           table_match['alt_sku'].values[0]][header]
         except KeyError:
             return ''
     else:
@@ -109,46 +155,64 @@ def find_match(sku, header, source, table):
         return ''
     return value.values[0]
 
-def transfer_from_original(gsheet, source, match_table):
+
+def transfer_from_original(gsheet, source, match_table, exclude):
     """
         Fill out columns, that can be located in the google sheet as well as
         the original flatfile format, within the google sheet with values from
         the source flatfile.
 
         Parameter:
-            gsheet [DataFrame]      - Google sheet containing the target
-                                      flatfile format
-            source [DataFrame]      - Source flatfile format from the CLI
-            match_table [DataFrame] - Frame containing a SKU/Altenative Sku
-                                      mapping
+            gsheet [DataFrame]      -   Google sheet containing the target
+                                        flatfile format
+            source [DataFrame]      -   Source flatfile format from the CLI
+            match_table [DataFrame] -   Frame containing a SKU/Altenative Sku
+                                        mapping
+            exclude[List]           -   List of columns to exclude
 
         Return:
-            [DataFrame]         - Google sheet with filled out values from the
-                                  original format
+            [DataFrame]             -   Google sheet with filled out values
+                                        from the original format
     """
     for header in gsheet.columns:
         if header in ['item_sku', 'index']:
             continue
-        gsheet[header] = gsheet['item_sku'].apply(
-            lambda x: find_match(sku=x, header=header, source=source,
-                                 table=match_table))
+        if header in exclude:
+            continue
+        gsheet[header] = gsheet['item_sku'].apply(lambda x: find_match(
+            sku=x, header=header, source=source, table=match_table))
         # filter remaining '0' values
         if gsheet[header].dtypes == object:
-            if len(gsheet[gsheet[header].str.contains(r"^0$", na=False)].index) > 0:
+            if len(gsheet[gsheet[header].str.contains(r"^0$",
+                                                      na=False)].index) > 0:
                 gsheet[header] = gsheet[header].str.replace(r"^0$", '')
     return gsheet
+
 
 def cli():
     orig_path = ''
     sheet_id = ''
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('-o', '--original', required=True,
-                        help='The original flatfile format',
-                        action='store', dest='original')
-    parser.add_argument('-c', '--column', required=False,
-                        help='choose a specific column from the data source',
-                        action='store', dest='column')
+    parser.add_argument('-o',
+                        '--original',
+                        required=True,
+                        action='store',
+                        dest='original',
+                        help='The original flatfile format')
+    parser.add_argument('-c',
+                        '--column',
+                        required=False,
+                        action='store',
+                        dest='column',
+                        help='choose a specific column from the data source')
+    parser.add_argument(
+        '-e',
+        '--exclude',
+        required=False,
+        action='store',
+        dest='exclude',
+        help='exclude a column/list of column names from being overwritten')
     args = parser.parse_args()
 
     if not os.path.exists(DATA_DIR):
@@ -170,9 +234,12 @@ def cli():
     # Parse the EAN field explicitly to a string to read EANs starting with
     # '0..' correctly, do the same for the browse nodes to avoid floating
     # points
-    orig = pandas.read_csv(orig_path, sep=';',
-                           dtype={'external_product_id':object,
-                                  'recommended_browse_nodes':object})
+    orig = pandas.read_csv(orig_path,
+                           sep=';',
+                           dtype={
+                               'external_product_id': object,
+                               'recommended_browse_nodes': object
+                           })
 
     print("Downloading alternative SKUs..")
     inter = pandas.read_csv(config['General']['sku_export'], sep=';')
@@ -189,18 +256,24 @@ def cli():
     if len(gsheet.index) == 0:
         sys.exit(1)
 
+    ex = exclude_columns(data=gsheet, columns=args.exclude)
+
     match_table = create_match_table(sheet=gsheet, intern_list=inter)
 
     if args.column:
-        gsheet['value'] = gsheet['item_sku'].apply(
-            lambda x: find_match(sku=x, header=args.column, source=orig,
-                                 table=match_table))
+        gsheet['value'] = gsheet['item_sku'].apply(lambda x: find_match(
+            sku=x, header=args.column, source=orig, table=match_table))
     elif not args.column:
-        gsheet = transfer_from_original(gsheet=gsheet, source=orig,
-                                        match_table=match_table)
+        gsheet = transfer_from_original(gsheet=gsheet,
+                                        source=orig,
+                                        match_table=match_table,
+                                        exclude=ex)
 
-    gsheet.to_csv(os.path.join('/', 'home', 'basti', 'test_transfer.csv'), sep=';',
+    gsheet.to_csv(os.path.join('/', 'home', 'basti', 'test_transfer.csv'),
+                  sep=';',
                   index=False)
 
-    google_sheet.write_google_sheet(creds=creds, sheet_id=sheet_id,
-                                    frame=gsheet)
+    google_sheet.write_google_sheet(creds=creds,
+                                    sheet_id=sheet_id,
+                                    frame=gsheet,
+                                    exclude=ex)

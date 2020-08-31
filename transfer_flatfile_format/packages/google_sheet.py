@@ -13,7 +13,6 @@ from itertools import islice
 import pandas
 import numpy as np
 
-
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -40,35 +39,38 @@ elif sys.platform == 'win32':
 CREDENTIAL_PATH = os.path.join(DATA_DIR, '.credentials.json')
 TOKEN_PATH = os.path.join(DATA_DIR, 'token.pickle')
 
+
 def build_sheet_range(column, max_row, range_column=''):
     """
         Specify the area within the google sheet used for reading/writing.
 
         Parameters:
-            column [String] : Start column on the sheet ('A', 'B' etc.)
-            max_row [Integer] : Amount of rows for the range
-            range_column [String] : End column on the sheet
-                                (To create a horizontal-vertical range (A1:E2))
+            column [String]         -   Start column on the sheet ('A' etc.)
+            max_row [Integer]       -   Amount of rows for the range
+            range_column [String]   -   End column on the sheet
+                                        (To create a horizontal-vertical
+                                         range (A1:E2))
 
         Return:
-            [String] - Example: 'A1:E5' (A1, A2, ... , E4, E5)
+            [String]                -   Example: 'A1:E5' (A1, A2, ... , E4, E5)
     """
     if max_row:
         if not range_column:
             return str(f'{column}1:{column}{max_row}')
         return str(f'{column}1:{range_column}{max_row}')
-    print("No specified amount of rows to read, default to range: {0}"
-          .format('A1:E20'))
+    print("No specified amount of rows to read, default to range: {0}".format(
+        'A1:E20'))
     print("Check the config.ini file to adjust the range")
     return 'A1:E20'
+
 
 def fill_up_values(val, maximum):
     """
         Append empty values to a list for the specified range.
 
         Parameter:
-            val [List]      - original list
-            maximum [Int]   - End of range
+            val [List]      -   original list
+            maximum [Int]   -   End of range
 
         Return:
             val [List]
@@ -77,19 +79,20 @@ def fill_up_values(val, maximum):
         val.append('')
     return val
 
+
 def build_column_name(column_enum):
     """
         Parse a letter combination from a give 0-indexed column index number.
         example: 27 => 'AB', 3 => 'D', 0 => 'A'
 
         Parameter:
-            column_enum [Int]   - index number of the column
+            column_enum [Int]   -   index number of the column
 
         Return:
             [String]
     """
     a_const = ord('A')
-    quotient = math.floor(column_enum/LEN_ALPHABET)
+    quotient = math.floor(column_enum / LEN_ALPHABET)
 
     if column_enum > LEN_ALPHABET - 1:
         first = chr(a_const + quotient - 1)
@@ -97,21 +100,24 @@ def build_column_name(column_enum):
         return first + second
     return chr(a_const + column_enum)
 
+
 def write_chunks(data, size=25):
     """
         Split the data for the batch write to the google sheet into smaller
         chunks. This is useful to prevent write request from being to large.
 
         Parameter:
-            data [List]     - Data containing dictionaries with ranges and
-                              values for a write
-            size [int]      - chunk size
+            data [List]     -   Data containing dictionaries with ranges and
+                                values for a write
+            size [int]      -   chunk size
 
         Return:
-            [List]          - Sub-list of size SIZE
+            [List]          -   Sub-list of size SIZE
     """
+    iterator = iter(data)
     for _ in range(0, len(data), size):
-        yield [k for k in islice(iter(data), size)]
+        yield [k for k in islice(iterator, size)]
+
 
 def get_google_credentials():
     """
@@ -144,20 +150,22 @@ def get_google_credentials():
 
     return creds
 
+
 def read_google_sheet(creds, sheet_id):
     """
         Open the sheet with the @sheet_id.
 
         Parameter:
             creds [Google Sheet credentials]
-            sheet_id [String] : Identification of the google sheet
+            sheet_id [String]       -   Identification of the google sheet
 
         Return:
             [Dict] : Response from google sheets API
     """
     service = build('sheets', 'v4', credentials=creds)
-    sheet_range = [build_sheet_range(column='A', max_row='2400',
-                                     range_column='FH')]
+    sheet_range = [
+        build_sheet_range(column='A', max_row='2400', range_column='FH')
+    ]
 
     sheet = service.spreadsheets()
     result = sheet.values().batchGet(spreadsheetId=sheet_id,
@@ -167,6 +175,7 @@ def read_google_sheet(creds, sheet_id):
         print('No data found')
 
     return ranges
+
 
 def read_incomplete_data(creds, sheet_id):
     """
@@ -178,7 +187,7 @@ def read_incomplete_data(creds, sheet_id):
 
         Parameter:
             creds [Google Sheet credentials]
-            sheet_id [String] : Identification of the google sheet
+            sheet_id [String]       -   Identification of the google sheet
 
         Result:
             [DataFrame]
@@ -217,15 +226,16 @@ def read_incomplete_data(creds, sheet_id):
 
     return pandas.DataFrame(sheet_dict, columns=column_names + ['index'])
 
+
 def read_specified_column(creds, sheet_id, target_column):
     """
         Read every SKU together with the specified column into dataframe.
 
         Parameter:
             creds [Google Sheet credentials]
-            sheet_id [String]       : Identification of the google sheet
-            target_column [String]  : command line argument specifying the
-                                      target column
+            sheet_id [String]       -   Identification of the google sheet
+            target_column [String]  -   command line argument specifying the
+                                        target column
 
         Result:
             [DataFrame]
@@ -245,7 +255,7 @@ def read_specified_column(creds, sheet_id, target_column):
             return pandas.DataFrame()
 
         sheet_dict = {
-            col:[] for col in ['item_sku', 'value', 'column_index', 'index']
+            col: [] for col in ['item_sku', 'value', 'column_index', 'index']
         }
         for i in range(HEADER_ROW, len(values)):
             if not values[i][SKU_COLUMN]:
@@ -264,10 +274,11 @@ def read_specified_column(creds, sheet_id, target_column):
                     sheet_dict['column_index'].append(index)
                     sheet_dict['index'].append(i)
 
-    return pandas.DataFrame(sheet_dict, columns=['item_sku', 'value', 'index',
-                                                 'column_index'])
+    return pandas.DataFrame(
+        sheet_dict, columns=['item_sku', 'value', 'index', 'column_index'])
 
-def write_google_sheet(creds, sheet_id, frame):
+
+def write_google_sheet(creds, sheet_id, frame, exclude):
     """
         Write the values to the google sheet, depending on the read option
         a 'column_index' column is present (when the column option was used),
@@ -275,8 +286,9 @@ def write_google_sheet(creds, sheet_id, frame):
 
         Parameter:
             creds [Google Sheet credentials]
-            sheet_id [String] : Identification of the google sheet
-            frame [DataFrame] : difference between source and target
+            sheet_id [String]   -   Identification of the google sheet
+            frame [DataFrame]   -   difference between source and target
+            exclude [List]      -   columns to exclude from writing to gsheet
     """
     data = []
     data_cols = ['range', 'values']
@@ -295,14 +307,16 @@ def write_google_sheet(creds, sheet_id, frame):
         for i, col in enumerate([x for x in frame.columns if x != 'index']):
             if col == 'item_sku':
                 continue
-            range_name = build_column_name(i) + str(item[1]['index']+1)
+            if col in exclude:
+                continue
+            range_name = build_column_name(i) + str(item[1]['index'] + 1)
             values = [[str(item[1][col]).replace(str(np.nan), '')]]
             data.append(dict(zip(data_cols, [range_name, values])))
 
     for item in write_chunks(data=data, size=3000):
-        body = {'valueInputOption': 'RAW', 'data':item}
-        response = sheet.values().batchUpdate(
-            spreadsheetId=sheet_id, body=body).execute()
+        body = {'valueInputOption': 'RAW', 'data': item}
+        response = sheet.values().batchUpdate(spreadsheetId=sheet_id,
+                                              body=body).execute()
 
         if not 'totalUpdatedRows' in response.keys():
             print("WARNING: No updates were performed.")
