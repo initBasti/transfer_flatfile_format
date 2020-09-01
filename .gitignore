@@ -5,3 +5,4 @@ test/__pycache__/
 test/file_*
 dist/
 poetry.lock
+multi_up.sh

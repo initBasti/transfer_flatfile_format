@@ -96,8 +96,8 @@ def get_exclude_options(string):
             [List]
     """
     if string.find(','):
-        return string.split(',')
-    return [string]
+        return string.strip(' ').split(',')
+    return [string.strip(' ')]
 
 
 def exclude_columns(data, columns):
@@ -113,7 +113,7 @@ def exclude_columns(data, columns):
             [List]              -   List of valid columns to exclude
     """
     if not columns:
-        return
+        return []
 
     sub_arguments = get_exclude_options(string=columns)
 
@@ -259,7 +259,20 @@ def set_up_argparser():
         action='store_true',
         dest='save',
         help='save the changes into a file at ~/.transfer_flatfile_format')
-    return parser.parse_args()
+    parser.add_argument(
+        '-a',
+        '--adjust_value',
+        required=False,
+        action='store_true',
+        dest='adjust',
+        help='Only with --column, use a command from config to adjust values')
+    args = parser.parse_args()
+
+    if args.adjust and not args.column:
+        print("ERROR: You can only use --adjust in combination with --column")
+        sys.exit(1)
+
+    return args
 
 
 def cli():
@@ -305,6 +318,9 @@ def cli():
         sys.exit(1)
 
     ex = exclude_columns(data=gsheet, columns=args.exclude)
+    if not ex:
+        print("ERROR: Option '-e' requires a comma separated list of strings")
+        sys.exit(1)
 
     if with_matchtable:
         print("Downloading alternative SKUs..")
@@ -317,6 +333,21 @@ def cli():
     if args.column:
         gsheet['value'] = gsheet['item_sku'].apply(lambda x: find_match(
             sku=x, header=args.column, source=orig, table=match_table))
+        gsheet['value'].fillna(0, inplace=True)
+        gsheet['value'] = gsheet['value'].astype(str)
+        if args.adjust and config.has_section('Adjust'):
+            if config.has_option(section='Adjust', option='command'):
+                gsheet['value'] = gsheet['value'].apply(lambda x: eval(
+                    config['Adjust']['command'].replace('X', str(x))
+                ))
+                gsheet['value'] = gsheet['value'].astype(str)
+                gsheet['value'] = gsheet['value'].str.replace('^0$', '')
+            else:
+                print("ERROR: Add a 'command' option for -a")
+                sys.exit(1)
+        elif args.adjust and not config.has_section('Adjust'):
+            print("ERROR: Add a 'Adjust' section and 'command' option for -a")
+            sys.exit(1)
     elif not args.column:
         gsheet = transfer_from_original(gsheet=gsheet,
                                         source=orig,
