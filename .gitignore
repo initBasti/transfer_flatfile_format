@@ -1,5 +1,7 @@
 transfer_flatfile_format/__pycache__/
 transfer_flatfile_format/packages/__pycache__/
+transfer_flatfile_format.egg-info/
 test/__pycache__/
 test/file_*
 dist/
+poetry.lock

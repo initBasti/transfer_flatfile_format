@@ -1,16 +1,19 @@
 [tool.poetry]
 name = "transfer_flatfile_format"
 version = "0.1.0"
-description = ""
+description = "Move data inbetween different Amazon flatfile formats to the correct locations."
 authors = ["Sebastian Fricke <sebastian.fricke.linux@gmail.com>"]
+readme = README.md
 license = "GPL-3.0-or-later"
+keywords = ['flatfile', 'amazon', 'gsheet']
 
 [tool.poetry.dependencies]
 python = "^3.7"
 pandas = "^1.1.1"
-pickle = "^0.0.11"
-googleapiclient = "^0.0.6"
 numpy = "^1.19.1"
+google = "^3.0.0"
+pickle5 = "^0.0.11"
+google_spreadsheet = "^0.0.6"
 
 [tool.poetry.dev-dependencies]
 
