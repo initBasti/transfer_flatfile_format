@@ -12,7 +12,11 @@ Find a sub-set of rows, that match a certain condition (don't contain any values
 
 #### Installation:
 
-`python3 -m pip install transfer_flatfile_format --user --upgrade`
+- `python3 -m pip install transfer_flatfile_format --user --upgrade`
+
+- Place the credentials file from: [Google sheets tutorial](https://developers.google.com/sheets/api/quickstart/python?authuser=3) into the data folder (see section: 'Usage'). (`~/.transfer_flatfile_format/.credentials.json`)
+
+- Enter the google-sheets document ID into the config.ini file. (see section 'Usage')
 
 #### Usage:
 
