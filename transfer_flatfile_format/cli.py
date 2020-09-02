@@ -278,6 +278,7 @@ def set_up_argparser():
 def cli():
     orig_path = ''
     sheet_id = ''
+    ex = []
     match_table = pandas.DataFrame()
     with_matchtable = False
 
@@ -317,10 +318,11 @@ def cli():
     if len(gsheet.index) == 0:
         sys.exit(1)
 
-    ex = exclude_columns(data=gsheet, columns=args.exclude)
-    if not ex:
-        print("ERROR: Option '-e' requires a comma separated list of strings")
-        sys.exit(1)
+    if args.exclude:
+        ex = exclude_columns(data=gsheet, columns=args.exclude)
+        if not ex:
+            print("ERROR: Option '-e' needs a ',' separated list of strings")
+            sys.exit(1)
 
     if with_matchtable:
         print("Downloading alternative SKUs..")
