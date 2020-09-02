@@ -8,7 +8,7 @@ The underlying problem, which the project tackles is that Amazon provides differ
 
 #### Strategy:
 
-Find a sub-set of rows, that match a certain condition (don't contain any values, besides the provided SKU), pull the missing data from an external source supplied through the command line option (-o/--original). Map a fallback value for the SKU from the google sheet by searching for one inside of a plentymarkets export (this is a very specific option usable for our system). Write the data to the google-sheet in form of smaller chunks.
+Find a sub-set of rows, that match a certain condition (don't contain any values, besides the provided SKU), pull the missing data from an external source supplied through the command line option (-o/--original). Map a fallback value for the SKU from the google sheet by searching for one inside of a plentymarkets export (this is a very specific option usable for our system). Write the data to the google-sheet in form of smaller chunks (to avoid problems occuring with uploading >10000 values at once to the API).
 
 #### Installation:
 
@@ -20,7 +20,7 @@ Find a sub-set of rows, that match a certain condition (don't contain any values
 
 #### Usage:
 
-There are **three* options:
+There are **four** options:
 
 - --orginal / -o:
     + File location of the flatfile format, which is used as source for the values
