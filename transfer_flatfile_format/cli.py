@@ -153,6 +153,29 @@ def create_match_table(sheet, intern_list, config):
     return merge[['item_sku', 'alt_sku']]
 
 
+def adjust_value(data, config):
+    """
+        Use a simple python expression to modify all values from the
+        original flatfile.
+
+        Parameter:
+            data [DataFrame]    -   GoogleSheet
+            config [ConfigParser object]
+    """
+    # remove NaN values from the sheet
+    data['value'].fillna(0, inplace=True)
+    data['value'] = data['value'].astype(str)
+    if config.has_option(section='Adjust', option='command'):
+        data['value'] = data['value'].apply(lambda x: eval(
+            config['Adjust']['command'].replace('X', str(x))
+        ))
+        data['value'] = data['value'].astype(str)
+        data['value'] = data['value'].str.replace('^0$', '')
+    else:
+        print("ERROR: Add a 'command' option to the config for '-a'")
+        sys.exit(1)
+
+
 def find_match(sku, header, source, table):
     """
         Check if the given SKU or the alternative SKU (from the match table)
@@ -306,6 +329,16 @@ def cli():
 
     # We just want to copy values so just take everything as a string
     orig = pandas.read_csv(orig_path, sep=';', dtype=str)
+    if 'item_sku' not in orig.columns:
+        orig = pandas.read_csv(orig_path, sep=';', dtype=str, header=2)
+        if 'item_sku' not in orig.columns:
+            print("ERROR: invalid flatfile from '--original'")
+            print("\tCould not locate 'item_sku' in row 1 or 3")
+            sys.exit(1)
+
+    if len(orig.index) == 0:
+        print(f"ERROR: Empty file provides by '--original' @ {orig_path}")
+
 
     if args.column:
         gsheet = google_sheet.read_specified_column(creds=creds,
@@ -335,21 +368,12 @@ def cli():
     if args.column:
         gsheet['value'] = gsheet['item_sku'].apply(lambda x: find_match(
             sku=x, header=args.column, source=orig, table=match_table))
-        gsheet['value'].fillna(0, inplace=True)
-        gsheet['value'] = gsheet['value'].astype(str)
         if args.adjust and config.has_section('Adjust'):
-            if config.has_option(section='Adjust', option='command'):
-                gsheet['value'] = gsheet['value'].apply(lambda x: eval(
-                    config['Adjust']['command'].replace('X', str(x))
-                ))
-                gsheet['value'] = gsheet['value'].astype(str)
-                gsheet['value'] = gsheet['value'].str.replace('^0$', '')
-            else:
-                print("ERROR: Add a 'command' option for -a")
-                sys.exit(1)
+            adjust_value(data=gsheet, config=config)
         elif args.adjust and not config.has_section('Adjust'):
             print("ERROR: Add a 'Adjust' section and 'command' option for -a")
             sys.exit(1)
+        gsheet = gsheet[gsheet['value'] != '']
     elif not args.column:
         gsheet = transfer_from_original(gsheet=gsheet,
                                         source=orig,
