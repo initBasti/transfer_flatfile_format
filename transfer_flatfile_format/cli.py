@@ -340,6 +340,7 @@ def cli():
         print(f"ERROR: Empty file provides by '--original' @ {orig_path}")
 
 
+    print("read")
     if args.column:
         gsheet = google_sheet.read_specified_column(creds=creds,
                                                     sheet_id=sheet_id,
@@ -357,6 +358,7 @@ def cli():
             print("ERROR: Option '-e' needs a ',' separated list of strings")
             sys.exit(1)
 
+    print("match")
     if with_matchtable:
         print("Downloading alternative SKUs..")
         inter = pandas.read_csv(matchtable_data['src'], sep=';')
@@ -365,6 +367,7 @@ def cli():
                                          intern_list=inter,
                                          config=matchtable_data)
 
+    print("transfer")
     if args.column:
         gsheet['value'] = gsheet['item_sku'].apply(lambda x: find_match(
             sku=x, header=args.column, source=orig, table=match_table))
@@ -385,6 +388,7 @@ def cli():
                       sep=';',
                       index=False)
 
+    print("write")
     google_sheet.write_google_sheet(creds=creds,
                                     sheet_id=sheet_id,
                                     frame=gsheet,

@@ -185,6 +185,13 @@ def read_google_sheet(creds, sheet_id):
     ranges = result['valueRanges']
     if not ranges:
         print('No data found')
+        return {}
+
+    # check if the sku_column is at the correct location (B3)
+    if ranges[0]['values'][2][SKU_COLUMN] != 'item_sku':
+        print("ERROR: google_sheet: expected 'item_sku' @ B3"
+              f", found: {ranges[0]['values'][2][SKU_COLUMN]}")
+        return {}
 
     return ranges
 
