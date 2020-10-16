@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "transfer_flatfile_format"
-version = "0.1.1"
+version = "0.1.3"
 description = "Move data inbetween different Amazon flatfile formats to the correct locations."
 authors = ["Sebastian Fricke <sebastian.fricke.linux@gmail.com>"]
 readme = "README.md"
